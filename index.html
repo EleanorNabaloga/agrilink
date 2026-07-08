@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriLink Escrow Platform - Hackathon MVP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans min-h-screen flex flex-col">
+
+    <header class="bg-emerald-700 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <i data-lucide="sprout" class="w-8 h-8 text-emerald-300"></i>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">AgriLink Escrow</h1>
+                    <p class="text-xs text-emerald-100 font-medium tracking-wide">SECURE AGRICULTURAL SUPPLY CHAIN PAYMENTS</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center bg-emerald-800 rounded-lg p-1 border border-emerald-600 shadow-inner">
+                <button id="switch-buyer" onclick="switchRole('BUYER')" class="px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 bg-white text-emerald-900 shadow">
+                    <span class="flex items-center gap-2"><i data-lucide="shopping-bag" class="w-4 h-4"></i> Buyer View</span>
+                </button>
+                <button id="switch-farmer" onclick="switchRole('FARMER')" class="px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 text-emerald-100 hover:text-white">
+                    <span class="flex items-center gap-2"><i data-lucide="tractor" class="w-4 h-4"></i> Farmer View</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        <div class="lg:col-span-2 space-y-6">
+            
+            <section id="buyer-zone" class="space-y-6">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <i data-lucide="search" class="text-emerald-600"></i> Available Produce Listings
+                    </h2>
+                    
+                    <div class="border border-gray-200 rounded-xl p-5 hover:border-emerald-500 transition-colors bg-gradient-to-r from-white to-gray-50">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="bg-amber-100 text-amber-800 text-xs font-semibold px-2.5 py-1 rounded-full uppercase">Grade A Quality</span>
+                                <h3 class="text-lg font-bold text-gray-900 mt-2">Premium Maize Grains</h3>
+                                <p class="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                                    <i data-lucide="user" class="w-3.5 h-3.5"></i> Seller: Mbalinge Esther (Farmer)
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-2xl font-black text-emerald-700">1,200,000 UGX</p>
+                                <p class="text-xs text-gray-500">Fixed Lot: 50 Bags (100kg/bag)</p>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="text-xs text-gray-600 space-y-1">
+                                <p class="flex items-center gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-gray-400"></i> Region: Western Uganda</p>
+                                <p class="flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5 text-gray-400"></i> Est. Delivery: 3-5 Days</p>
+                            </div>
+                            <button id="btn-initiate" onclick="initiateOrder()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95">
+                                <i data-lucide="lock" class="w-4 h-4"></i> Secure with Escrow
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="farmer-zone" class="space-y-6 hidden">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <i data-lucide="layout-dashboard" class="text-emerald-600"></i> Your Managed Listings & Orders
+                    </h2>
+                    
+                    <div class="border border-gray-100 rounded-xl p-4 bg-gray-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h3 class="font-bold text-gray-900">Premium Maize Grains</h3>
+                            <p class="text-xs text-gray-500 mt-0.5">50 Bags &bull; Listed at 1,200,000 UGX</p>
+                        </div>
+                        <span class="bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Active Marketplace Listing
+                        </span>
+                    </div>
+
+                    <div id="farmer-actions-card" class="mt-6 border border-dashed border-gray-200 rounded-xl p-8 text-center bg-gray-50 hidden">
+                        <i data-lucide="truck" class="w-10 h-10 text-gray-400 mx-auto mb-3"></i>
+                        <h4 class="font-bold text-gray-800">Order Dispatch Processing</h4>
+                        <p class="text-sm text-gray-500 max-w-md mx-auto mt-1 mb-4">The buyer has committed funds to the secure escrow vault. It is safe to pack and dispatch the produce.</p>
+                        <button id="btn-ship" onclick="shipOrder()" class="bg-amber-600 hover:bg-amber-700 text-white font-semibold px-6 py-2.5 rounded-lg inline-flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                            <i data-lucide="package-check" class="w-4 h-4"></i> Confirm Shipment Dispatch
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-xl shadow-md border border-gray-100 p-6 sticky top-6 space-y-6">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="shield-check" class="text-emerald-600"></i> Escrow Vault Ledger
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1">Real-time status changes tracking active contract execution states.</p>
+                </div>
+
+                <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center">
+                    <span class="text-xs font-bold text-gray-400 tracking-wider block uppercase mb-1">Current State</span>
+                    <div id="escrow-badge" class="inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-gray-200 text-gray-700 uppercase tracking-wide">
+                        No Active Deal
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t border-gray-200/60">
+                        <span class="text-xs font-semibold text-gray-500 block">Funds Locked inside Escrow</span>
+                        <span id="vault-funds" class="text-2xl font-black text-gray-400 tracking-tight transition-all block mt-0.5">0 UGX</span>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Transaction Lifecycle</h3>
+                    
+                    <div class="space-y-3 relative before:absolute before:bottom-2 before:top-2 before:left-[11px] before:w-[2px] before:bg-gray-200">
+                        <div id="step-pending" class="flex items-start gap-3 relative transition-all opacity-40">
+                            <div class="w-6 h-6 rounded-full bg-gray-300 border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 transition-colors"></div>
+                            <div>
+                                <h4 class="text-sm font-bold text-gray-800">1. Order Initiated</h4>
+                                <p class="text-xs text-gray-500">Buyer locks funds into the platform vault</p>
+                            </div>
+                        </div>
+                        <div id="step-funded" class="flex items-start gap-3 relative transition-all opacity-40">
+                            <div class="w-6 h-6 rounded-full bg-gray-300 border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 transition-colors"></div>
+                            <div>
+                                <h4 class="text-sm font-bold text-gray-800">2. Escrow Funded</h4>
+                                <p class="text-xs text-gray-500">Seller is notified that delivery is secured</p>
+                            </div>
+                        </div>
+                        <div id="step-shipped" class="flex items-start gap-3 relative transition-all opacity-40">
+                            <div class="w-6 h-6 rounded-full bg-gray-300 border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 transition-colors"></div>
+                            <div>
+                                <h4 class="text-sm font-bold text-gray-800">3. Produce Shipped</h4>
+                                <p class="text-xs text-gray-500">Farmer dispatches transit cargo to buyer</p>
+                            </div>
+                        </div>
+                        <div id="step-completed" class="flex items-start gap-3 relative transition-all opacity-40">
+                            <div class="w-6 h-6 rounded-full bg-gray-300 border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 transition-colors"></div>
+                            <div>
+                                <h4 class="text-sm font-bold text-gray-800">4. Funds Released</h4>
+                                <p class="text-xs text-gray-500">Buyer verifies cargo quality, processing final payout</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="buyer-action-space" class="pt-2 border-t border-gray-100 hidden">
+                    <button id="btn-release" onclick="releaseFunds()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow transition-all mb-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i> Verify & Release Funds
+                    </button>
+                    <button id="btn-dispute" onclick="triggerDispute()" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold py-2 px-4 rounded-xl border border-rose-200 flex items-center justify-center gap-2 transition-all">
+                        <i data-lucide="alert-triangle" class="w-4 h-4"></i> Raise Inspection Dispute
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="bg-gray-100 border-t border-gray-200 mt-auto py-4">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-gray-500 font-mono">
+            Agri-Fin Escrow Pipeline Engine State Router &bull; Live Hackathon Prototype Sandbox
+        </div>
+    </footer>
+
+    <script>
+        // Global State Variables for Simulation Trackers
+        let currentRole = 'BUYER'; 
+        let contractState = 'IDLE'; // States: IDLE -> PENDING -> FUNDED -> SHIPPED -> COMPLETED -> DISPUTED
+
+        // Initialize Lucide Vector Icons on Startup load and fetch remote state/listings
+        document.addEventListener("DOMContentLoaded", async () => {
+            lucide.createIcons();
+            await fetchListings();
+            await refreshEscrowState();
+        });
+
+        // Switch roles between Buyer and Farmer view windows during demonstration pitch
+        function switchRole(role) {
+            currentRole = role;
+            const btnBuyer = document.getElementById('switch-buyer');
+            const btnFarmer = document.getElementById('switch-farmer');
+            const buyerZone = document.getElementById('buyer-zone');
+            const farmerZone = document.getElementById('farmer-zone');
+
+            if (role === 'BUYER') {
+                btnBuyer.className = "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 bg-white text-emerald-900 shadow";
+                btnFarmer.className = "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 text-emerald-100 hover:text-white";
+                buyerZone.classList.remove('hidden');
+                farmerZone.classList.add('hidden');
+            } else {
+                btnFarmer.className = "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 bg-white text-emerald-900 shadow";
+                btnBuyer.className = "px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 text-emerald-100 hover:text-white";
+                farmerZone.classList.remove('hidden');
+                buyerZone.classList.add('hidden');
+            }
+            updateStateUI();
+        }
+
+        // API helpers
+        async function fetchListings() {
+            try {
+                const res = await fetch('/api/listings');
+                const data = await res.json();
+                // For now, we only show the first listing and keep the DOM as-is
+                // Could render dynamic list here later
+                return data.listings;
+            } catch (e) {
+                console.error('Failed to fetch listings', e);
+                return [];
+            }
+        }
+
+        async function refreshEscrowState() {
+            try {
+                const res = await fetch('/api/escrow');
+                const data = await res.json();
+                contractState = (data.escrow && data.escrow.state) ? data.escrow.state : 'IDLE';
+                // Update funds display if present
+                const vaultFunds = document.getElementById('vault-funds');
+                if (data.escrow && typeof data.escrow.funds !== 'undefined') {
+                    vaultFunds.innerText = data.escrow.funds ? `${data.escrow.funds.toLocaleString()} UGX` : '0 UGX';
+                }
+                updateStateUI();
+            } catch (e) {
+                console.error('Failed to refresh escrow state', e);
+            }
+        }
+
+        // Action Trigger 1: Initiate Transaction Setup & Lock Funds (calls server)
+        async function initiateOrder() {
+            try {
+                const res = await fetch('/api/orders', { method: 'POST' });
+                const data = await res.json();
+                contractState = data.escrow.state;
+                document.getElementById('vault-funds').innerText = data.escrow.funds ? `${data.escrow.funds.toLocaleString()} UGX` : '0 UGX';
+                updateStateUI();
+            } catch (e) {
+                console.error('Failed to initiate order', e);
+            }
+        }
+
+        // Action Trigger 2: Farmer Confirms Processing Dispatch Shipment
+        async function shipOrder() {
+            try {
+                const res = await fetch('/api/escrow/ship', { method: 'POST' });
+                const data = await res.json();
+                contractState = data.escrow.state;
+                updateStateUI();
+            } catch (e) {
+                console.error('Failed to ship order', e);
+            }
+        }
+
+        // Action Trigger 3: Buyer Confirms Receipt Verification, Processing payout release
+        async function releaseFunds() {
+            try {
+                const res = await fetch('/api/escrow/release', { method: 'POST' });
+                const data = await res.json();
+                contractState = data.escrow.state;
+                document.getElementById('vault-funds').innerText = data.escrow.funds ? `${data.escrow.funds.toLocaleString()} UGX` : '0 UGX';
+                updateStateUI();
+            } catch (e) {
+                console.error('Failed to release funds', e);
+            }
+        }
+
+        // Action Trigger 4: Raise dispute due to exceptions
+        async function triggerDispute() {
+            try {
+                const res = await fetch('/api/escrow/dispute', { method: 'POST' });
+                const data = await res.json();
+                contractState = data.escrow.state;
+                updateStateUI();
+            } catch (e) {
+                console.error('Failed to trigger dispute', e);
+            }
+        }
+
+        // UI View Layout Synchronizer Engine
+        function updateStateUI() {
+            const badge = document.getElementById('escrow-badge');
+            const vaultFunds = document.getElementById('vault-funds');
+            const btnInitiate = document.getElementById('btn-initiate');
+            const farmerCard = document.getElementById('farmer-actions-card');
+            const buyerActions = document.getElementById('buyer-action-space');
+            const btnRelease = document.getElementById('btn-release');
+
+            // Reset step tracker node highlights
+            const steps = ['pending', 'funded', 'shipped', 'completed'];
+            steps.forEach(step => {
+                const el = document.getElementById(`step-${step}`);
+                el.classList.add('opacity-40');
+                const indicator = el.querySelector('div');
+                indicator.className = "w-6 h-6 rounded-full bg-gray-300 border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 transition-colors";
+                indicator.innerText = "";
+            });
+
+            // Evaluate state conditions map
+            switch(contractState) {
+                case 'IDLE':
+                    badge.className = "inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-gray-200 text-gray-700 uppercase tracking-wide";
+                    badge.innerText = "No Active Deal";
+                    if (!vaultFunds.innerText || vaultFunds.innerText.trim()==='') vaultFunds.innerText = "0 UGX";
+                    vaultFunds.className = "text-2xl font-black text-gray-400 tracking-tight block mt-0.5";
+                    btnInitiate.disabled = false;
+                    btnInitiate.innerHTML = `<i data-lucide="lock" class="w-4 h-4"></i> Secure with Escrow`;
+                    btnInitiate.className = "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95";
+                    farmerCard.classList.add('hidden');
+                    buyerActions.classList.add('hidden');
+                    break;
+
+                case 'FUNDED':
+                    badge.className = "inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-amber-100 text-amber-800 uppercase tracking-wide";
+                    badge.innerText = "Funded & Locked";
+                    vaultFunds.className = "text-2xl font-black text-amber-600 tracking-tight block mt-0.5";
+                    
+                    btnInitiate.disabled = true;
+                    btnInitiate.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Funds Vaulted`;
+                    btnInitiate.className = "bg-gray-200 text-gray-400 font-semibold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 cursor-not-allowed";
+                    
+                    highlightStep('pending', 'bg-emerald-600');
+                    highlightStep('funded', 'bg-amber-500');
+
+                    farmerCard.classList.remove('hidden');
+                    buyerActions.classList.add('hidden');
+                    break;
+
+                case 'SHIPPED':
+                    badge.className = "inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-blue-100 text-blue-800 uppercase tracking-wide";
+                    badge.innerText = "Produce Shipped";
+                    vaultFunds.className = "text-2xl font-black text-blue-600 tracking-tight block mt-0.5";
+
+                    highlightStep('pending', 'bg-emerald-600');
+                    highlightStep('funded', 'bg-emerald-600');
+                    highlightStep('shipped', 'bg-blue-500');
+
+                    farmerCard.classList.add('hidden');
+                    if(currentRole === 'BUYER') {
+                        buyerActions.classList.remove('hidden');
+                        btnRelease.disabled = false;
+                    } else {
+                        buyerActions.classList.add('hidden');
+                    }
+                    break;
+
+                case 'COMPLETED':
+                    badge.className = "inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-emerald-100 text-emerald-800 uppercase tracking-wide";
+                    badge.innerText = "Paid to Farmer";
+                    vaultFunds.className = "text-2xl font-black text-emerald-600 tracking-tight block mt-0.5";
+
+                    highlightStep('pending', 'bg-emerald-600');
+                    highlightStep('funded', 'bg-emerald-600');
+                    highlightStep('shipped', 'bg-emerald-600');
+                    highlightStep('completed', 'bg-emerald-600');
+
+                    farmerCard.classList.add('hidden');
+                    buyerActions.classList.add('hidden');
+                    break;
+
+                case 'DISPUTED':
+                    badge.className = "inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-rose-100 text-rose-800 uppercase tracking-wide animate-pulse";
+                    badge.innerText = "Dispute Locked";
+                    vaultFunds.className = "text-2xl font-black text-rose-600 tracking-tight block mt-0.5";
+                    buyerActions.classList.add('hidden');
+                    farmerCard.classList.add('hidden');
+                    break;
+            }
+            lucide.createIcons();
+        }
+
+        // Mini Helper to style pipeline node rows
+        function highlightStep(stepId, colorClass) {
+            const row = document.getElementById(`step-${stepId}`);
+            row.classList.remove('opacity-40');
+            const targetDot = row.querySelector('div');
+            targetDot.className = `w-6 h-6 rounded-full border-4 border-white flex items-center justify-center text-white text-xs font-bold z-10 ${colorClass}`;
+            targetDot.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-white"></i>`;
+        }
+    </script>
+</body>
+</html>
