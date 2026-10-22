@@ -57,4 +57,9 @@ export const en = {
   "order.err.not_enough": "There is not enough of this produce left.",
   "order.err.own_listing": "You cannot order your own produce.",
   "order.err.listing_unavailable": "This produce is no longer available.",
+  "pay.err.network": "This phone number is not MTN or Airtel, so we cannot take mobile money from it.",
+  "pay.err.failed": "The payment was not accepted. Nothing was taken from you. Please order again.",
+  "pay.err.unreachable": "We could not reach mobile money. Check your phone for a prompt; if none arrives, try again later.",
+  "pay.err.not_found": "We could not find this order.",
+  "pay.err.not_payable": "This order cannot be paid for now.",
 } as const;

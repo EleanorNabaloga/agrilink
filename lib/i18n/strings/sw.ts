@@ -58,4 +58,9 @@ export const sw: Record<string, string> = {
   "order.err.not_enough": "Hakuna mazao ya kutosha yaliyobaki.",
   "order.err.own_listing": "Huwezi kuagiza mazao yako mwenyewe.",
   "order.err.listing_unavailable": "Mazao haya hayapatikani tena.",
+  "pay.err.network": "Namba hii si ya MTN wala Airtel, hatuwezi kuchukua pesa kupitia hiyo.",
+  "pay.err.failed": "Malipo hayakukubaliwa. Hakuna pesa iliyochukuliwa. Tafadhali agiza tena.",
+  "pay.err.unreachable": "Hatukuweza kufikia pesa za simu. Angalia simu yako kuona ombi; kama halifiki, jaribu tena baadaye.",
+  "pay.err.not_found": "Hatukuweza kupata agizo hili.",
+  "pay.err.not_payable": "Agizo hili haliwezi kulipiwa sasa.",
 };

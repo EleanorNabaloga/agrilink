@@ -58,4 +58,9 @@ export const nyn: Record<string, string> = {
   "order.err.not_enough": "Hatasigaire bihagije.",
   "order.err.own_listing": "Ntushobora kuhanuura ebyawe.",
   "order.err.listing_unavailable": "Ebi nibitakiriho.",
+  "pay.err.network": "Namba egi ti ya MTN nari Airtel, titwine kuhaho sente.",
+  "pay.err.failed": "Okuriha tikwakiriziibwe. Tihaine sente ezihirwe. Ba oragire kandi.",
+  "pay.err.unreachable": "Titwakashobora kutaahamu mobile money. Reeba esimu yaawe; kakuba tihari ekirikuza, garuka oyeteho bukyayerere.",
+  "pay.err.not_found": "Titwakasanga oda egi.",
+  "pay.err.not_payable": "Oda egi teine kuriha kuri hati.",
 };

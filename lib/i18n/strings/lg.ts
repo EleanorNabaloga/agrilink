@@ -58,4 +58,9 @@ export const lg: Record<string, string> = {
   "order.err.not_enough": "Tewakyali bimala bya kuguza.",
   "order.err.own_listing": "Toyinza kulagira ku bintu byo.",
   "order.err.listing_unavailable": "Ebintu bino tebikyaliwo.",
+  "pay.err.network": "Enamba eno si ya MTN wadde Airtel, tetuyinza kuggyako ssente ku yo.",
+  "pay.err.failed": "Okusasula tekukkirizibwa. Tewali ssente ziggiddwako. Ddamu olagire.",
+  "pay.err.unreachable": "Tetusobodde kutuuka ku mobile money. Tunuulira essimu yo; bwe kitajja, ddamu oluvannyuma.",
+  "pay.err.not_found": "Tetusobodde kuzuula oda eno.",
+  "pay.err.not_payable": "Oda eno tesobola kusasulwa kati.",
 };
