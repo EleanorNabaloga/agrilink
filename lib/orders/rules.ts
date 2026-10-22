@@ -93,6 +93,12 @@ const TABLE: Partial<Record<OrderState, Record<string, Row>>> = {
       actor: "buyer",
       apply: (_o, _e, now) => go("awaiting_payment", addMinutes(now, PAYMENT_WINDOW_MIN)),
     },
+    // An order never paid for within its window gives its stock back.
+    payment_timeout: {
+      actor: "system",
+      apply: (o, _e, now) =>
+        isPast(o, now) ? go("cancelled", null, [{ kind: "release_stock" }]) : fail("deadline_not_reached"),
+    },
   },
   awaiting_payment: {
     charge_confirmed: {
@@ -198,7 +204,7 @@ export function transition(
 /** The system event that is due right now, if any. */
 export function nextDeadlineEvent(order: OrderSnapshot, now: Date): OrderEvent | null {
   if (!isPast(order, now)) return null;
-  if (order.state === "awaiting_payment") return { type: "payment_timeout" };
+  if (order.state === "awaiting_payment" || order.state === "ordered") return { type: "payment_timeout" };
   if (order.state === "delivered") return { type: "auto_release" };
   return null;
 }

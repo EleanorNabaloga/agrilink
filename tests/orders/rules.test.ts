@@ -207,4 +207,16 @@ describe("named cases", () => {
     expect(nextDeadlineEvent(snap("delivered", addMin(now, -1)), now)).toEqual({ type: "auto_release" });
     expect(nextDeadlineEvent(snap("paid", addDays(now, -1)), now)).toBeNull();
   });
+
+  test("ordered + payment_timeout cancels and releases stock once overdue", () => {
+    expect(transition(snap("ordered", addMin(now, -1)), { type: "payment_timeout" }, SYSTEM, now)).toEqual({
+      ok: true, to: "cancelled", deadlineAt: null, effects: [{ kind: "release_stock" }],
+    });
+    expect(transition(snap("ordered", addMin(now, 1)), { type: "payment_timeout" }, SYSTEM, now)).toEqual({ ok: false, reason: "deadline_not_reached" });
+    expect(transition(snap("ordered", addMin(now, -1)), { type: "payment_timeout" }, BUYER, now)).toEqual({ ok: false, reason: "wrong_actor" });
+  });
+  test("nextDeadlineEvent returns payment_timeout for an overdue ordered order", () => {
+    expect(nextDeadlineEvent(snap("ordered", addMin(now, -1)), now)).toEqual({ type: "payment_timeout" });
+    expect(nextDeadlineEvent(snap("ordered", addMin(now, 1)), now)).toBeNull();
+  });
 });
