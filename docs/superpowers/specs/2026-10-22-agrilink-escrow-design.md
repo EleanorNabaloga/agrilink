@@ -25,6 +25,7 @@ Said by the product owner:
 - Next.js + Neon Postgres + Vercel.
 - Voice notes for farmers who cannot type: on listings, on delivery and disputes, in order messages, with transcription by Sunbird AI.
 - AgriLink earns a 3% commission, paid by the buyer on top of the price.
+- AI features: speak a listing, fair price suggestion, dispute summary for admins, help assistant (section 11).
 - Notifications for goods in transit, and for listings, products and prices added by admins. In-app for everything, SMS for order updates.
 - Multilingual from launch: English, Luganda, Kiswahili and Runyankole (section 10).
 
@@ -88,6 +89,7 @@ Rules:
 | `lib/sms` | Send sign-in codes and order SMS through Africa's Talking. A fake that logs messages in development. | Africa's Talking |
 | `lib/voice` | Store recordings privately, create short-lived playback links, request transcription and translation from Sunbird AI. | Vercel Blob, Sunbird AI |
 | `lib/auth` | Phone + SMS code sign-in, sessions in a signed cookie, roles: `farmer`, `buyer`, `admin`, `agent`. | `lib/sms`, database |
+| `lib/ai` | Calls Claude for listing extraction, price explanations, dispute summaries and the help assistant. Server only; per-user daily limits; falls back cleanly when unavailable. | Anthropic API, database |
 | `lib/notify` | Create in-app notifications; decide which also go by SMS; follower matching for new listings, products and prices. | `lib/sms`, database |
 | Scheduled job (`/api/cron/tick`, hourly via Vercel Cron) | Cancel unpaid orders after 30 minutes, check `awaiting_payment` orders with Flutterwave, auto-release after 3 days, retry payouts and refunds, retry SMS and transcriptions. | all of the above |
 | Admin pages | Disputes, stuck payouts and refunds, order lookup and history, post listings for farmers, manage the product catalogue. | all of the above |
@@ -148,7 +150,7 @@ Launch languages: **English (`en`), Luganda (`lg`), Kiswahili (`sw`), Runyankole
 - **Data stays language-neutral:** order states, product ids, units and categories are stored as keys and translated only when shown. Each product in the catalogue has a name in all four languages (admins enter them when adding a product; English is used where one is missing).
 - **Numbers, money and dates:** UGX amounts with thousands separators ("1,200,000 UGX"), dates as "29 Oct" style in each language's month names, "3 days" style durations translated.
 - **Voice notes:** transcribed in the language spoken and translated into the *listener's* language where Sunbird AI supports it (Luganda, Runyankole and English are supported; Kiswahili support to be confirmed during the build, falling back to English translation).
-- **Translation quality:** the Luganda, Kiswahili and Runyankole files are drafted during the build and must be reviewed by native speakers before launch (added to section 13). Words for money and escrow ("held safely", "refund", "dispute") get special care so farmers trust them.
+- **Translation quality:** the Luganda, Kiswahili and Runyankole files are drafted during the build and must be reviewed by native speakers before launch (added to section 14). Words for money and escrow ("held safely", "refund", "dispute") get special care so farmers trust them.
 - **Adding a language later** (e.g. Acholi, Ateso, Lugbara): add one strings file and SMS templates, and register it in the language list. No other code changes.
 
 ## 11. When things go wrong
@@ -160,15 +162,16 @@ Launch languages: **English (`en`), Luganda (`lg`), Kiswahili (`sw`), Runyankole
 - Simultaneous actions: the row lock lets exactly one through.
 - Unexpected errors: plain message to the user, full detail in the server log; money is never moved by a half-finished request.
 
-## 12. Testing
+## 13. Testing
 
 - Unit tests for the order rules: every allowed transition and every refused one (pay twice, release a cancelled order, dispute after 3 days, deliver before sending).
 - Amount tests: commission and totals in whole shillings, splits that always add up to what was paid.
 - End-to-end tests with the fake payment provider: full happy path, payment failure, lost webhook, payout failure and retry, dispute with each admin decision, 7-day no-send cancellation, 3-day auto-release, two simultaneous actions on one order.
 - Language tests: every key in the English file exists in the other three, placeholders such as `{amount}` match, and every SMS template fits one SMS in every language.
+- AI checks: a set of about 30 sample farmer transcripts (all four languages) with the correct listing fields, run before each change to the listing prompt; dispute summaries checked against sample disputes for neutrality (no recommendation, both sides represented); help assistant tested with attempts to see another user's orders or to trigger actions, all of which must fail.
 - A final run against Flutterwave's sandbox with test numbers before going live.
 
-## 13. Before launch (outside the code)
+## 14. Before launch (outside the code)
 
 1. Verified Flutterwave business account with live keys.
 2. Legal check on holding funds under the National Payment Systems Act; confirm with Flutterwave whether their licence covers this arrangement.
@@ -176,7 +179,8 @@ Launch languages: **English (`en`), Luganda (`lg`), Kiswahili (`sw`), Runyankole
 4. Sunbird AI API access.
 5. Terms of use covering the 3% fee, the 7-day and 3-day rules, and how disputes are decided, in all four languages.
 6. Native speakers review the Luganda, Kiswahili and Runyankole screen text and SMS templates.
+7. Anthropic API account and key, with a monthly spending limit set in the Anthropic Console.
 
-## 14. Not in this project
+## 15. Not in this project
 
 Market prices (project 2), paid price alerts, featured listings, partner and data fees, bulk buyer subscriptions, further languages (Acholi, Ateso, Lugbara), delivery partner integration. The existing escrow demo (`index.html`, `server.js`, `data.json`) is replaced by the new app; its green visual style is kept.
