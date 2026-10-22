@@ -107,6 +107,7 @@ Rules:
 - `voice_notes`: id, owner id, storage key, duration seconds, transcript, detected language, translations (one per launch language, filled as listeners need them), transcription status, created at.
 - `follows`: user id, product id, district (optional), sms enabled.
 - `notifications`: id, user id, kind, title, body, link, read at, sms status, created at.
+- `synced_actions`: action id (made on the phone, unique), user id, action, result, phone time, received at. Lets a re-sent offline action return its first result instead of running twice.
 
 ## 7. Screens
 
