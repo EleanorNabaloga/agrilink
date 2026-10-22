@@ -175,15 +175,31 @@ describe("named cases", () => {
       .toEqual({ ok: false, reason: "not_allowed" });
   });
   test("split payout and refund add up with commission", () => {
-    const r = transition(snap("disputed"), { type: "admin_resolve", decision: "split", farmerAmount: 1000000 }, ADMIN, now);
+    const r = transition(snap("disputed"), { type: "admin_resolve", decision: "split", farmerAmount: 400000 }, ADMIN, now);
     expect(r).toMatchObject({
       ok: true,
       to: "releasing",
       effects: [
-        { kind: "payout", amount: 1000000 },
-        { kind: "refund", amount: AMOUNTS.total - 1000000 - 30000 },
+        { kind: "payout", amount: 400000 },
+        { kind: "refund", amount: AMOUNTS.total - 400000 - 12000 },
       ],
     });
+  });
+  test("split of the whole subtotal omits a zero refund (no provider fee)", () => {
+    const r = transition(snap("disputed"), { type: "admin_resolve", decision: "split", farmerAmount: AMOUNTS.subtotal }, ADMIN, now);
+    expect(r).toEqual({ ok: true, to: "releasing", deadlineAt: null, effects: [{ kind: "payout", amount: 1000000 }] });
+  });
+  test("split of the whole subtotal keeps the provider-fee refund", () => {
+    const withFee = computeAmounts(50000, 20, 3, 2); // providerFee 20,000
+    const r = transition({ state: "disputed", deadlineAt: null, amounts: withFee }, { type: "admin_resolve", decision: "split", farmerAmount: withFee.subtotal }, ADMIN, now);
+    expect(r).toEqual({
+      ok: true, to: "releasing", deadlineAt: null,
+      effects: [{ kind: "payout", amount: 1000000 }, { kind: "refund", amount: 20000 }],
+    });
+  });
+  test("split with farmerAmount 0 emits only the full refund", () => {
+    const r = transition(snap("disputed"), { type: "admin_resolve", decision: "split", farmerAmount: 0 }, ADMIN, now);
+    expect(r).toEqual({ ok: true, to: "releasing", deadlineAt: null, effects: [{ kind: "refund", amount: AMOUNTS.total }] });
   });
   test("nextDeadlineEvent picks payment_timeout and auto_release only when due", () => {
     expect(nextDeadlineEvent(snap("awaiting_payment", addMin(now, -1)), now)).toEqual({ type: "payment_timeout" });

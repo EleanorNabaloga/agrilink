@@ -186,7 +186,13 @@ export function transition(
   const row = TABLE[order.state]?.[resolveKey(event)];
   if (!row) return fail("not_allowed");
   if (actor.kind !== row.actor) return fail("wrong_actor");
-  return row.apply(order, event, now);
+  const result = row.apply(order, event, now);
+  if (!result.ok) return result;
+  // A 0 UGX payout or refund would be rejected by the provider, so never emit one.
+  return {
+    ...result,
+    effects: result.effects.filter((e) => e.kind === "release_stock" || e.amount > 0),
+  };
 }
 
 /** The system event that is due right now, if any. */
