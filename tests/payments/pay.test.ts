@@ -256,13 +256,20 @@ describe("POST /api/webhooks/flutterwave", () => {
   it("concurrent webhooks and confirmCharge make exactly one paid transition", async () => {
     const { orderId } = await paying();
     completeCharge(`${orderId}-charge`);
+    // Which caller wins the lock varies; the webhook may be the one that confirms. Count
+    // "confirmed" across the direct calls and the webhook (whose confirmation we observe through
+    // the confirmCharge calls it makes; here a 200 is all it returns), so the real assertion is the
+    // single paid event below.
     const results = await Promise.all([
       confirmCharge(orderId),
       confirmCharge(orderId),
       hook(evt(orderId)).then((r) => r.status),
       confirmCharge(orderId),
     ]);
-    expect(results.filter((r) => r === "confirmed")).toHaveLength(1);
+    const confirmed = results.filter((r) => r === "confirmed").length;
+    const webhookOk = results.includes(200);
+    expect(webhookOk).toBe(true);
+    expect(confirmed).toBeLessThanOrEqual(1);
     expect(await state(orderId)).toBe("paid");
     const ev = await query("select * from order_events where order_id = $1 and to_state = 'paid'", [orderId]);
     expect(ev.rows).toHaveLength(1);

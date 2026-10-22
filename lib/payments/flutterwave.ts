@@ -68,7 +68,12 @@ export const flutterwaveProvider: PaymentProvider = {
   },
 
   async verifyCharge(reference) {
-    const { json } = await call("GET", `/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`);
+    const { http, json } = await call("GET", `/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`);
+    // 404 means "no such transaction yet". Anything else besides 200 (e.g. 401 from a bad key) would
+    // leave every payment silently pending, so say so loudly (never the key).
+    if (http !== 200 && http !== 404) {
+      console.error(`Flutterwave verifyCharge ${reference} returned HTTP ${http}: check FLW_SECRET_KEY and the account`);
+    }
     const d = json.data as Json | undefined;
     // "No transaction found" and similar errors: nothing to confirm yet.
     if (json.status !== "success" || !d) return { status: "pending", amount: 0, currency: "UGX" };

@@ -27,7 +27,7 @@ export type ConfirmResult = "confirmed" | "pending" | "failed" | "mismatch" | "i
  *  - "ignored":   unknown order or charge, or nothing left to do (already confirmed)
  */
 export async function confirmCharge(orderId: string): Promise<ConfirmResult> {
-  if (!/^\d+$/.test(orderId)) return "ignored";
+  if (!/^\d{1,18}$/.test(orderId)) return "ignored";
   const reference = `${orderId}-charge`;
   const { rows } = await query<{ total: string; status: string }>(
     `select o.total::text as total, p.status

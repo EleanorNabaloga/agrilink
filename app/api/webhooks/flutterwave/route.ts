@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   }
   const body = (await req.json().catch(() => null)) as { data?: { tx_ref?: unknown } } | null;
   const txRef = body?.data?.tx_ref;
-  const m = typeof txRef === "string" ? /^(\d+)-charge$/.exec(txRef) : null;
+  const m = typeof txRef === "string" ? /^(\d{1,18})-charge$/.exec(txRef) : null;
   if (!m) {
     console.warn("flutterwave webhook ignored: unrecognised tx_ref");
     return NextResponse.json({ ok: true });
