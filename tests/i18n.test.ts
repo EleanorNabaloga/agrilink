@@ -35,6 +35,10 @@ test("fitsOneSms limits", () => {
   expect(fitsOneSms("[".repeat(80))).toBe(true);
   expect(fitsOneSms("[".repeat(81))).toBe(false);
   expect(fitsOneSms("é".repeat(160))).toBe(true);
+  expect(fitsOneSms("a".repeat(159) + "\\")).toBe(false);
+  expect(fitsOneSms("a".repeat(158) + "\\")).toBe(true);
+  expect(fitsOneSms("a".repeat(70) + "’")).toBe(false);
+  expect(fitsOneSms("a".repeat(69) + "’")).toBe(true);
   expect(fitsOneSms("ŋ".repeat(70))).toBe(true);
   expect(fitsOneSms("ŋ".repeat(71))).toBe(false);
 });

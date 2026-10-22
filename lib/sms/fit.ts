@@ -1,6 +1,6 @@
 const GSM_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-const GSM_EXT = "^{}\[~]|€";
+const GSM_EXT = "^{}\\[~]|€";
 
 /** One SMS: GSM-7 text up to 160 septets (extension chars count 2), else UCS-2 up to 70 characters. */
 export function fitsOneSms(text: string): boolean {
