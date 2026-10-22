@@ -89,7 +89,7 @@ export const flutterwaveProvider: PaymentProvider = {
       currency: "UGX",
       reference: p.reference,
       narration: p.narration,
-      beneficiary_name: "AgriLink farmer",
+      beneficiary_name: p.beneficiaryName || "AgriLink farmer",
     });
     if (json.status !== "success") return { status: "failed", error: String(json.message ?? "transfer failed") };
     const s = String(json.data?.status ?? "").toUpperCase();

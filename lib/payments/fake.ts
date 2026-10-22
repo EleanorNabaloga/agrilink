@@ -5,8 +5,9 @@ type Charge = { amount: number; currency: string; status: "successful" | "pendin
 type FakeState = {
   nextCharge: "pending" | "failed" | "throw";
   charges: Map<string, Charge>;
-  transfers: Map<string, "successful" | "failed">;
+  transfers: Map<string, "successful" | "pending" | "failed">;
   failTransfers: number;
+  pendingTransfers: number;
   seq: number;
 };
 
@@ -18,6 +19,7 @@ function st(): FakeState {
     charges: new Map(),
     transfers: new Map(),
     failTransfers: 0,
+    pendingTransfers: 0,
     seq: 0,
   });
 }
@@ -39,6 +41,14 @@ export function completeCharge(
 /** The next n transfers fail. */
 export function failTransfers(n: number): void {
   st().failTransfers = n;
+}
+/** The next n transfers are accepted but stay pending until completeTransfer is called. */
+export function pendingTransfers(n: number): void {
+  st().pendingTransfers = n;
+}
+/** Decide what verifyTransfer returns for `reference`. */
+export function completeTransfer(reference: string, status: "successful" | "failed" | "pending" = "successful"): void {
+  st().transfers.set(reference, status);
 }
 export function resetFake(): void {
   g.__agrilinkFakePay = undefined;
@@ -66,6 +76,11 @@ export const fakeProvider: PaymentProvider = {
       s.failTransfers--;
       s.transfers.set(p.reference, "failed");
       return { status: "failed", error: "fake: transfer failed" };
+    }
+    if (s.pendingTransfers > 0) {
+      s.pendingTransfers--;
+      s.transfers.set(p.reference, "pending");
+      return { status: "pending", providerRef: `fake-t-${++s.seq}` };
     }
     s.transfers.set(p.reference, "successful");
     return { status: "successful", providerRef: `fake-t-${++s.seq}` };

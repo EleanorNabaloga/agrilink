@@ -17,6 +17,7 @@ export interface PaymentProvider {
     amount: number;
     phone: string;
     narration: string;
+    beneficiaryName?: string;
   }): Promise<{ status: "pending" | "successful" | "failed"; providerRef?: string; error?: string }>;
   verifyTransfer(reference: string): Promise<{ status: "successful" | "pending" | "failed" }>;
   refund(p: {
