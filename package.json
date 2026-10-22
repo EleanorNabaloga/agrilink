@@ -12,6 +12,7 @@
     "migrate": "node scripts/migrate.mjs"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "jose": "^6.2.13",
     "next": "16.4.2",
     "pg": "^8.23.1",
