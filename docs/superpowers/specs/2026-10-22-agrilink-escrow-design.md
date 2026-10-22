@@ -11,7 +11,7 @@ The full product has three parts, built as separate projects in this order:
 
 1. **Escrow marketplace (this document).** Buyers pay through mobile money, AgriLink holds the money until delivery, then pays the farmer.
 2. **Market prices (later).** Prices per product per market, from the public WFP/FAO Uganda dataset (monthly) plus prices entered by admins (fresher). Anyone can browse and compare.
-3. **Full listings and growth features (later).** Richer listings, paid price alerts, featured listings, partner data fees, full Luganda translation.
+3. **Full listings and growth features (later).** Richer listings, paid price alerts, featured listings, partner data fees, more languages.
 
 This project includes a minimal listing (enough for a buyer to order something) that project 3 extends.
 
@@ -26,11 +26,12 @@ Said by the product owner:
 - Voice notes for farmers who cannot type: on listings, on delivery and disputes, in order messages, with transcription by Sunbird AI.
 - AgriLink earns a 3% commission, paid by the buyer on top of the price.
 - Notifications for goods in transit, and for listings, products and prices added by admins. In-app for everything, SMS for order updates.
+- Multilingual from launch: English, Luganda, Kiswahili and Runyankole (section 10).
 
 Assumed (to be corrected if wrong):
 - Uganda only, prices in whole Uganda shillings (UGX).
 - Most users are on Android phones with slow or intermittent data.
-- English interface first, with all text in one translations file so Luganda and others can be added.
+- Admin pages are English only; everything farmers and buyers see or receive is translated.
 
 ### Success criteria
 
@@ -93,15 +94,15 @@ Rules:
 
 ## 6. Data (Neon Postgres)
 
-- `users`: id, phone (unique, E.164), name, role, district, payout phone, payout confirmed at, created at.
+- `users`: id, phone (unique, E.164), name, role, district, language (`en`, `lg`, `sw`, `nyn`), payout phone, payout confirmed at, created at.
 - `otp_codes`: phone, code hash, expires at, attempts.
-- `products`: id, name, unit options, picture, added by, added at.
+- `products`: id, names in each language, unit options, picture, added by, added at.
 - `listings`: id, farmer id, product id, quantity available, unit, price per unit (UGX), district, photo, text description, voice note id, posted by (farmer or admin/agent), status (`active`, `sold_out`, `withdrawn`).
 - `orders`: id, listing id, buyer id, farmer id, quantity, unit price, subtotal, commission percent, commission, provider fee, total, state, state deadline, transporter name, transporter phone, created at.
 - `order_events` (append only): order id, from state, to state, actor id or `system`, note, voice note id, created at.
 - `payments`: id, order id, kind (`charge`, `payout`, `refund`), amount, provider reference (unique), status, attempts, raw response, created at, updated at.
 - `messages`: id, order id, sender id, text, voice note id, created at.
-- `voice_notes`: id, owner id, storage key, duration seconds, transcript, detected language, English translation, transcription status, created at.
+- `voice_notes`: id, owner id, storage key, duration seconds, transcript, detected language, translations (one per launch language, filled as listeners need them), transcription status, created at.
 - `follows`: user id, product id, district (optional), sms enabled.
 - `notifications`: id, user id, kind, title, body, link, read at, sms status, created at.
 
@@ -109,6 +110,7 @@ Rules:
 
 Phone first: large buttons, short text, works on slow connections.
 
+- **Language picker:** on the first screen and in settings: English, Luganda, Kiswahili, Runyankole.
 - **Sign in:** phone number → SMS code → (first time) farmer or buyer, name, district.
 - **Browse listings:** crop, quantity, price, district, photo, voice play button with transcript. Filter by crop and district.
 - **Farmer, new listing:** crop from a picture list, quantity and unit, price, district, optional photo, then a large microphone button ("Describe it") or typing.
@@ -136,7 +138,20 @@ Phone first: large buttons, short text, works on slow connections.
 | New product in catalogue | Everyone | yes | only if SMS on |
 | New price for a followed product | Followers | yes | only if SMS on (switches on with the market prices project) |
 
-## 10. When things go wrong
+## 10. Languages
+
+Launch languages: **English (`en`), Luganda (`lg`), Kiswahili (`sw`), Runyankole (`nyn`).**
+
+- **Choosing:** a language picker on the first screen (before sign-in) and in settings. The choice is saved on the user's account (`users.language`) and in the browser, so it follows them across devices. First visit defaults to the phone's language if it is one of the four, else English.
+- **Screens:** every word farmers and buyers see comes from translation files (`lib/strings/en.js`, `lg.js`, `sw.js`, `nyn.js`), keyed by name. No text is written directly in pages. A missing phrase falls back to English rather than showing a blank.
+- **SMS:** sign-in codes and order SMS are sent in the recipient's saved language. Each SMS template is checked to fit one SMS (160 characters, or 70 if the language needs special characters) so messages don't split and cost double.
+- **Data stays language-neutral:** order states, product ids, units and categories are stored as keys and translated only when shown. Each product in the catalogue has a name in all four languages (admins enter them when adding a product; English is used where one is missing).
+- **Numbers, money and dates:** UGX amounts with thousands separators ("1,200,000 UGX"), dates as "29 Oct" style in each language's month names, "3 days" style durations translated.
+- **Voice notes:** transcribed in the language spoken and translated into the *listener's* language where Sunbird AI supports it (Luganda, Runyankole and English are supported; Kiswahili support to be confirmed during the build, falling back to English translation).
+- **Translation quality:** the Luganda, Kiswahili and Runyankole files are drafted during the build and must be reviewed by native speakers before launch (added to section 13). Words for money and escrow ("held safely", "refund", "dispute") get special care so farmers trust them.
+- **Adding a language later** (e.g. Acholi, Ateso, Lugbara): add one strings file and SMS templates, and register it in the language list. No other code changes.
+
+## 11. When things go wrong
 
 - Payment fails, is declined or times out: order `cancelled`, nothing charged, quantity released.
 - Webhook never arrives: hourly job verifies with Flutterwave.
@@ -145,21 +160,23 @@ Phone first: large buttons, short text, works on slow connections.
 - Simultaneous actions: the row lock lets exactly one through.
 - Unexpected errors: plain message to the user, full detail in the server log; money is never moved by a half-finished request.
 
-## 11. Testing
+## 12. Testing
 
 - Unit tests for the order rules: every allowed transition and every refused one (pay twice, release a cancelled order, dispute after 3 days, deliver before sending).
 - Amount tests: commission and totals in whole shillings, splits that always add up to what was paid.
 - End-to-end tests with the fake payment provider: full happy path, payment failure, lost webhook, payout failure and retry, dispute with each admin decision, 7-day no-send cancellation, 3-day auto-release, two simultaneous actions on one order.
+- Language tests: every key in the English file exists in the other three, placeholders such as `{amount}` match, and every SMS template fits one SMS in every language.
 - A final run against Flutterwave's sandbox with test numbers before going live.
 
-## 12. Before launch (outside the code)
+## 13. Before launch (outside the code)
 
 1. Verified Flutterwave business account with live keys.
 2. Legal check on holding funds under the National Payment Systems Act; confirm with Flutterwave whether their licence covers this arrangement.
 3. Africa's Talking account with an approved sender name ("AgriLink").
 4. Sunbird AI API access.
-5. Terms of use covering the 3% fee, the 7-day and 3-day rules, and how disputes are decided.
+5. Terms of use covering the 3% fee, the 7-day and 3-day rules, and how disputes are decided, in all four languages.
+6. Native speakers review the Luganda, Kiswahili and Runyankole screen text and SMS templates.
 
-## 13. Not in this project
+## 14. Not in this project
 
-Market prices (project 2), paid price alerts, featured listings, partner and data fees, bulk buyer subscriptions, full Luganda translation, delivery partner integration. The existing escrow demo (`index.html`, `server.js`, `data.json`) is replaced by the new app; its green visual style is kept.
+Market prices (project 2), paid price alerts, featured listings, partner and data fees, bulk buyer subscriptions, further languages (Acholi, Ateso, Lugbara), delivery partner integration. The existing escrow demo (`index.html`, `server.js`, `data.json`) is replaced by the new app; its green visual style is kept.
