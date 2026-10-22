@@ -55,4 +55,7 @@ export const sw: Record<string, string> = {
   "listing.err.description": "Maelezo ni marefu mno (herufi 500 kwa juu).",
   "listing.err.photo": "Picha lazima iwe JPEG, PNG au WebP isiyozidi MB 5.",
   "listing.back": "Rudi",
+  "order.err.not_enough": "Hakuna mazao ya kutosha yaliyobaki.",
+  "order.err.own_listing": "Huwezi kuagiza mazao yako mwenyewe.",
+  "order.err.listing_unavailable": "Mazao haya hayapatikani tena.",
 };

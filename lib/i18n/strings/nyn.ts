@@ -55,4 +55,7 @@ export const nyn: Record<string, string> = {
   "listing.err.description": "Ebisobanuro nibingi muno (ennukuta 500 kuhika).",
   "listing.err.photo": "Ekishushani kibe JPEG, PNG nari WebP, kitarengire MB 5.",
   "listing.back": "Garuka",
+  "order.err.not_enough": "Hatasigaire bihagije.",
+  "order.err.own_listing": "Ntushobora kuhanuura ebyawe.",
+  "order.err.listing_unavailable": "Ebi nibitakiriho.",
 };

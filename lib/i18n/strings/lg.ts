@@ -55,4 +55,7 @@ export const lg: Record<string, string> = {
   "listing.err.description": "Ennyonyola empanvu nnyo (ennukuta 500 ezisinga).",
   "listing.err.photo": "Ekifaananyi kiba JPEG, PNG oba WebP, tekisusa MB 5.",
   "listing.back": "Ddayo",
+  "order.err.not_enough": "Tewakyali bimala bya kuguza.",
+  "order.err.own_listing": "Toyinza kulagira ku bintu byo.",
+  "order.err.listing_unavailable": "Ebintu bino tebikyaliwo.",
 };

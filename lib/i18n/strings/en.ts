@@ -54,4 +54,7 @@ export const en = {
   "listing.err.description": "Description is too long (500 letters at most).",
   "listing.err.photo": "Photo must be a JPEG, PNG or WebP picture up to 5 MB.",
   "listing.back": "Back",
+  "order.err.not_enough": "There is not enough of this produce left.",
+  "order.err.own_listing": "You cannot order your own produce.",
+  "order.err.listing_unavailable": "This produce is no longer available.",
 } as const;
