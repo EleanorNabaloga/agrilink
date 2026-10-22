@@ -31,7 +31,7 @@ Said by the product owner:
 
 Assumed (to be corrected if wrong):
 - Uganda only, prices in whole Uganda shillings (UGX).
-- Most users are on Android phones with slow or intermittent data.
+- Most users are on Android phones with slow or intermittent data, so the app works offline and syncs (section 12).
 - Admin pages are English only; everything farmers and buyers see or receive is translated.
 
 ### Success criteria
@@ -150,7 +150,7 @@ Launch languages: **English (`en`), Luganda (`lg`), Kiswahili (`sw`), Runyankole
 - **Data stays language-neutral:** order states, product ids, units and categories are stored as keys and translated only when shown. Each product in the catalogue has a name in all four languages (admins enter them when adding a product; English is used where one is missing).
 - **Numbers, money and dates:** UGX amounts with thousands separators ("1,200,000 UGX"), dates as "29 Oct" style in each language's month names, "3 days" style durations translated.
 - **Voice notes:** transcribed in the language spoken and translated into the *listener's* language where Sunbird AI supports it (Luganda, Runyankole and English are supported; Kiswahili support to be confirmed during the build, falling back to English translation).
-- **Translation quality:** the Luganda, Kiswahili and Runyankole files are drafted during the build and must be reviewed by native speakers before launch (added to section 14). Words for money and escrow ("held safely", "refund", "dispute") get special care so farmers trust them.
+- **Translation quality:** the Luganda, Kiswahili and Runyankole files are drafted during the build and must be reviewed by native speakers before launch (added to section 15). Words for money and escrow ("held safely", "refund", "dispute") get special care so farmers trust them.
 - **Adding a language later** (e.g. Acholi, Ateso, Lugbara): add one strings file and SMS templates, and register it in the language list. No other code changes.
 
 ## 11. AI features
@@ -204,27 +204,72 @@ Rough cost per use at Claude Opus 5.5 prices ($4 per million input tokens, $20 p
 ### 11.6 Privacy
 
 - Phone numbers, payout numbers and payment references are never sent to the AI. Names are replaced with "Buyer" and "Farmer" in dispute summaries.
-- The terms of use (section 14) say that voice notes and messages may be processed by AI services (Sunbird AI, Anthropic) to provide these features.
+- The terms of use (section 15) say that voice notes and messages may be processed by AI services (Sunbird AI, Anthropic) to provide these features.
 
-## 12. When things go wrong
+## 12. Working offline
+
+Many farmers have weak or no signal. The app is an installable web app (PWA): once opened with signal, it keeps working without it and catches up when the connection returns.
+
+### 12.1 What works offline
+
+| Works offline | Needs signal |
+|---|---|
+| Opening the app and every screen already visited | Signing in (SMS code) |
+| Reading saved listings, own orders, messages, notifications, last-known prices (each marked "Last updated …") | Paying (Flutterwave prompt) |
+| Farmer: new listing with photo and voice note; "I've sent it"; "Delivered" | AI features and transcription (run after sync) |
+| Buyer: "I received it"; "Report a problem" (text or voice) | Price suggestion (shows the last-known range, dated) |
+| Both: send text or voice messages; change followed crops and districts; change language | Admin pages |
+
+When something needs signal, the button says so ("Needs internet: you can pay when you're back online") instead of failing.
+
+### 12.2 How saving and syncing works
+
+- **Stored on the phone:** the app's files are cached by a service worker; data the user has seen is kept in the browser database (IndexedDB), limited to the user's own orders, the last 200 listings viewed and 30 days of messages and notifications.
+- **Outbox:** every offline action is saved to an outbox on the phone with a unique id created on the phone, the action, its data, any photo or voice file, and the phone's time. A badge shows "Waiting for signal (3)"; each waiting item is marked on its screen.
+- **Sending:** when the connection returns (and every few minutes while the app is open), the outbox is sent oldest first, one at a time, so actions on the same order arrive in order. Files are uploaded first, then the action. Background sync sends the outbox even if the app is closed, on phones that support it.
+- **No duplicates:** the server records each action id; receiving the same id again returns the first result without repeating the action. A dropped connection mid-send is therefore safe to retry.
+- **Server is the judge:** each synced action goes through the normal order rules (section 2) in a locked transaction. If the order changed in the meantime (for example it was auto-released, or the buyer already confirmed), the action is refused and the user sees why in plain words, in their language. Refused items leave the outbox; nothing retries forever.
+- **After sync:** the phone downloads the latest copy of everything it shows, so its saved data matches the server.
+
+### 12.3 Time and deadlines
+
+- Deadlines are judged by **when the action reaches AgriLink (server time)**, never by the phone's clock, so changing the phone's date cannot get round the 3-day or 7-day rules.
+- The phone's time is stored alongside for information (shown to admins in disputes, e.g. "recorded on phone 24 Oct 18:05, received 26 Oct 09:12").
+- When a deadline is close, the saved item warns: "Saved. It counts when it reaches AgriLink. Your 3 days end 25 Oct 14:00."
+- A farmer's "Delivered" starts the buyer's 3 days when it reaches AgriLink, so buyers never lose time to a farmer's lack of signal.
+
+### 12.4 Keeping it light on data
+
+- Photos are shrunk on the phone (longest side 1280 px, JPEG) before saving; voice notes are recorded compressed (Opus, about 1 MB per 2 minutes).
+- Screens download only what changed since the last sync.
+- Users can choose "Save data" mode: no photos or voice downloaded until tapped.
+
+### 12.5 Sign-in and security offline
+
+- A signed-in session lasts 30 days on that phone, so farmers are not locked out while offline. Signing in again needs signal.
+- Saved data on the phone is cleared on sign-out. Admin data is never stored offline.
+
+## 13. When things go wrong
 
 - Payment fails, is declined or times out: order `cancelled`, nothing charged, quantity released.
 - Webhook never arrives: hourly job verifies with Flutterwave.
 - Payout or refund fails: retried 3 times over 3 hours, then flagged to admin; money remains held.
 - SMS or Sunbird down: the order still advances; SMS and transcription are retried.
 - Simultaneous actions: the row lock lets exactly one through.
+- Offline action refused at sync (order changed meanwhile, deadline passed): removed from the outbox, user told why in their language.
 - Unexpected errors: plain message to the user, full detail in the server log; money is never moved by a half-finished request.
 
-## 13. Testing
+## 14. Testing
 
 - Unit tests for the order rules: every allowed transition and every refused one (pay twice, release a cancelled order, dispute after 3 days, deliver before sending).
 - Amount tests: commission and totals in whole shillings, splits that always add up to what was paid.
 - End-to-end tests with the fake payment provider: full happy path, payment failure, lost webhook, payout failure and retry, dispute with each admin decision, 7-day no-send cancellation, 3-day auto-release, two simultaneous actions on one order.
 - Language tests: every key in the English file exists in the other three, placeholders such as `{amount}` match, and every SMS template fits one SMS in every language.
 - AI checks: a set of about 30 sample farmer transcripts (all four languages) with the correct listing fields, run before each change to the listing prompt; dispute summaries checked against sample disputes for neutrality (no recommendation, both sides represented); help assistant tested with attempts to see another user's orders or to trigger actions, all of which must fail.
+- Offline tests: actions queued offline then synced (in order, exactly once), the same action sent twice, a sync arriving after the order moved on, a deadline passing while offline, phone clock set wrong, sign-out clearing saved data. Run in the browser with the network switched off and on.
 - A final run against Flutterwave's sandbox with test numbers before going live.
 
-## 14. Before launch (outside the code)
+## 15. Before launch (outside the code)
 
 1. Verified Flutterwave business account with live keys.
 2. Legal check on holding funds under the National Payment Systems Act; confirm with Flutterwave whether their licence covers this arrangement.
@@ -234,6 +279,6 @@ Rough cost per use at Claude Opus 5.5 prices ($4 per million input tokens, $20 p
 6. Native speakers review the Luganda, Kiswahili and Runyankole screen text and SMS templates.
 7. Anthropic API account and key, with a monthly spending limit set in the Anthropic Console.
 
-## 15. Not in this project
+## 16. Not in this project
 
 Market prices (project 2), paid price alerts, featured listings, partner and data fees, bulk buyer subscriptions, further languages (Acholi, Ateso, Lugbara), delivery partner integration. The existing escrow demo (`index.html`, `server.js`, `data.json`) is replaced by the new app; its green visual style is kept.
