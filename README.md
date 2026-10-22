@@ -35,3 +35,7 @@ npm test
 ```
 
 Tests reset the database on every run, so they must never point at real data. Set `TEST_DATABASE_URL` to a separate database (for Neon, a separate branch). If it is not set, `npm test` starts a throwaway local Postgres using the `embedded-postgres` package and removes it afterwards.
+
+## Next.js notes
+
+Route handler and page `params` are Promises in Next 15+, so later code must `await` them.
