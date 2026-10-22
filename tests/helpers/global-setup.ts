@@ -1,6 +1,26 @@
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+
+/** Asks the OS for an unused TCP port on 127.0.0.1. */
+async function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        server.close();
+        reject(new Error("Could not determine a free port"));
+        return;
+      }
+      const { port } = address;
+      server.close((err) => (err ? reject(err) : resolve(port)));
+    });
+  });
+}
 
 /**
  * Uses TEST_DATABASE_URL when set. Otherwise starts a local Postgres with the
@@ -15,7 +35,7 @@ export default async function setup() {
 
   const { default: EmbeddedPostgres } = await import("embedded-postgres");
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agrilink-pg-"));
-  const port = 54329;
+  const port = await findFreePort();
   const pgServer = new EmbeddedPostgres({
     databaseDir: dataDir,
     user: "postgres",
