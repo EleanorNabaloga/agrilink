@@ -20,10 +20,17 @@ export async function query<T = any>(sql: string, params: unknown[] = []): Promi
 
 export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   const client = await pool().connect();
-  let committed = false;
+  let released = false;
+  const release = () => {
+    if (!released) {
+      released = true;
+      client.release();
+    }
+  };
+  const after: Array<() => Promise<void> | void> = [];
+  let result: T;
   try {
     await client.query("begin");
-    const after: Array<() => Promise<void> | void> = [];
     const tx: Tx = {
       afterCommit: (cb) => {
         after.push(cb);
@@ -33,24 +40,24 @@ export async function withTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>
         return { rows: res.rows as R[] };
       },
     };
-    const result = await fn(tx);
+    result = await fn(tx);
     await client.query("commit");
-    committed = true;
-    for (const cb of after) {
-      try {
-        await cb();
-      } catch (e) {
-        console.error("afterCommit callback failed", e);
-      }
-    }
-    return result;
   } catch (err) {
-    if (committed) throw err;
     await client.query("rollback").catch(() => {});
+    release();
     throw err;
-  } finally {
-    client.release();
   }
+  // Committed: give the connection back before callbacks, so a callback that needs the pool
+  // cannot deadlock when every connection is busy.
+  release();
+  for (const cb of after) {
+    try {
+      await cb();
+    } catch (e) {
+      console.error("afterCommit callback failed", e);
+    }
+  }
+  return result;
 }
 
 /** Close the shared pool (tests and scripts). */
