@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) throw new HttpError(400, "error.bad_request");
     const { listingId, quantity, actionId } = parsed.data;
-    const result = await withAction(actionId, user.id, "create_order", () => createOrder(user.id, listingId, quantity));
+    const result = await withAction(actionId, user.id, "create_order", (tx) => createOrder(user.id, listingId, quantity, { tx }));
     if (!result.ok) throw new HttpError(409, `order.err.${result.reason}`);
     return NextResponse.json({ orderId: result.orderId }, { status: 201 });
   });

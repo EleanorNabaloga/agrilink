@@ -73,6 +73,13 @@ describe("createOrder", () => {
     expect((await query("select 1 from orders")).rows).toHaveLength(0);
   });
 
+  it("rejects bad quantities before touching anything", async () => {
+    const { buyer, listing } = await seed();
+    for (const q of [0, -1, 1.5, NaN]) expect(await createOrder(buyer, listing, q)).toEqual({ ok: false, reason: "bad_quantity" });
+    expect(await listingRow(listing)).toMatchObject({ quantity_available: 10 });
+    expect((await query("select 1 from orders")).rows).toHaveLength(0);
+  });
+
   it("marks the listing sold_out when the last bag goes", async () => {
     const { buyer, listing } = await seed();
     expect((await createOrder(buyer, listing, 10)).ok).toBe(true);
@@ -132,7 +139,7 @@ describe("applyEvent", () => {
     expect((await query("select state from orders where id = $1", [orderId])).rows[0].state).toBe("awaiting_payment");
   });
 
-  it("with opts.tx it uses the caller's transaction and does not notify", async () => {
+  it("with opts.tx it uses the caller's transaction; rollback means no notify", async () => {
     const { orderId, buyer } = await newOrder();
     const spy = vi.spyOn(notify, "notifyOrderEvent");
     await expect(
@@ -145,6 +152,19 @@ describe("applyEvent", () => {
     expect((await query("select state from orders where id = $1", [orderId])).rows[0].state).toBe("ordered");
     expect(await events(orderId)).toHaveLength(0);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("with opts.tx it notifies only after the outer commit", async () => {
+    const { orderId, buyer } = await newOrder();
+    const calls: string[] = [];
+    vi.spyOn(notify, "notifyOrderEvent").mockImplementation(async () => {
+      calls.push("notify");
+    });
+    await withTransaction(async (tx) => {
+      await applyEvent(orderId, { type: "start_payment" }, BUYER(buyer), { tx });
+      calls.push("in-tx");
+    });
+    expect(calls).toEqual(["in-tx", "notify"]);
   });
 
   it("release_stock returns the quantity and revives only sold_out listings", async () => {
@@ -215,7 +235,44 @@ describe("applyEvent", () => {
   });
 });
 
+describe("afterCommit", () => {
+  it("runs after commit, never on rollback, and a throwing callback does not reject", async () => {
+    const order: string[] = [];
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await withTransaction(async (tx) => {
+      tx.afterCommit(async () => {
+        order.push("a");
+        throw new Error("x");
+      });
+      tx.afterCommit(() => {
+        order.push("b");
+      });
+      order.push("body");
+      return 5;
+    });
+    expect(r).toBe(5);
+    expect(order).toEqual(["body", "a", "b"]);
+    const cb = vi.fn();
+    await expect(withTransaction(async (tx) => { tx.afterCommit(cb); throw new Error("no"); })).rejects.toThrow("no");
+    expect(cb).not.toHaveBeenCalled();
+  });
+});
+
 describe("withAction", () => {
+  it("is atomic: a failed result write rolls back the order and the stock", async () => {
+    const { buyer, listing } = await seed();
+    await expect(
+      withAction("atomic-1", buyer, "create_order", async (tx) => {
+        const r = await createOrder(buyer, listing, 3, { tx });
+        expect(r.ok).toBe(true);
+        return { big: 10n } as any; // not JSON-serialisable, fails after the work ran
+      }),
+    ).rejects.toThrow();
+    expect((await query("select 1 from orders")).rows).toHaveLength(0);
+    expect((await query("select 1 from synced_actions")).rows).toHaveLength(0);
+    expect(await listingRow(listing)).toMatchObject({ quantity_available: 10, status: "active" });
+  });
+
   it("runs fn directly without an actionId", async () => {
     const fn = vi.fn(async () => 1);
     await withAction(undefined, "1", "x", fn);
@@ -279,6 +336,15 @@ describe("POST /api/orders", () => {
     expect((await res.json()).error).toBe("order.err.not_enough");
     expect((await (await post(c, { listingId: "999999", quantity: 1 })).json()).error).toBe("order.err.listing_unavailable");
     expect((await post(c, { listingId: "abc", quantity: 1 })).status).toBe(400);
+  });
+
+  it("12 concurrent POSTs with distinct actionIds all complete", async () => {
+    const { buyer, listing } = await seed(100);
+    const c = await cookieFor(buyer);
+    const rs = await Promise.all(Array.from({ length: 12 }, (_, i) => post(c, { listingId: listing, quantity: 1, actionId: `d-${i}` })));
+    expect(rs.map((r) => r.status)).toEqual(Array(12).fill(201));
+    expect((await query("select 1 from orders")).rows).toHaveLength(12);
+    expect(await listingRow(listing)).toMatchObject({ quantity_available: 88 });
   });
 
   it("two concurrent POSTs with the same actionId create one order", async () => {

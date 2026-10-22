@@ -15,12 +15,18 @@ const isId = (s: string) => /^\d+$/.test(s);
 
 export type CreateOrderResult =
   | { ok: true; orderId: string }
-  | { ok: false; reason: "not_enough" | "own_listing" | "listing_unavailable" };
+  | { ok: false; reason: "bad_quantity" | "not_enough" | "own_listing" | "listing_unavailable" };
 
 /** Reserve stock and create an order. The listing row lock serialises competing buyers. */
-export async function createOrder(buyerId: string, listingId: string, quantity: number): Promise<CreateOrderResult> {
+export async function createOrder(
+  buyerId: string,
+  listingId: string,
+  quantity: number,
+  opts?: { tx?: Tx },
+): Promise<CreateOrderResult> {
+  if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, reason: "bad_quantity" };
   if (!isId(listingId)) return { ok: false, reason: "listing_unavailable" };
-  return withTransaction(async (tx): Promise<CreateOrderResult> => {
+  const run = async (tx: Tx): Promise<CreateOrderResult> => {
     const { rows } = await tx.query<{ farmer_id: string; quantity_available: number; price_per_unit: string; status: string }>(
       `select farmer_id::text as farmer_id, quantity_available, price_per_unit::text as price_per_unit, status
          from listings where id = $1 for update`,
@@ -50,7 +56,8 @@ export async function createOrder(buyerId: string, listingId: string, quantity: 
       [listingId, buyerId, l.farmer_id, quantity, a.unitPrice, a.subtotal, a.commissionPercent, a.commission, a.providerFee, a.total, PAYMENT_WINDOW_MIN],
     );
     return { ok: true, orderId: ins.rows[0].id };
-  });
+  };
+  return opts?.tx ? run(opts.tx) : withTransaction(run);
 }
 
 export type ApplyResult =
@@ -143,8 +150,8 @@ async function applyInTx(tx: Tx, orderId: string, event: OrderEvent, actor: Acto
 }
 
 /**
- * Apply one event to an order under a row lock. With `opts.tx` the caller owns the transaction
- * (and any notification); otherwise this opens its own and notifies after the commit.
+ * Apply one event to an order under a row lock. With `opts.tx` the caller owns the transaction;
+ * either way the notification runs after the commit (errors are logged, never thrown).
  */
 export async function applyEvent(
   orderId: string,
@@ -153,14 +160,10 @@ export async function applyEvent(
   opts?: { tx?: Tx },
 ): Promise<ApplyResult> {
   if (!isId(orderId)) return { ok: false, reason: "not_found" };
-  if (opts?.tx) return applyInTx(opts.tx, orderId, event, actor);
-  const res = await withTransaction((tx) => applyInTx(tx, orderId, event, actor));
-  if (res.ok) {
-    try {
-      await notifyOrderEvent(orderId, res.state);
-    } catch (err) {
-      console.error("notifyOrderEvent failed", err);
-    }
-  }
-  return res;
+  const run = async (tx: Tx) => {
+    const res = await applyInTx(tx, orderId, event, actor);
+    if (res.ok) tx.afterCommit(() => notifyOrderEvent(orderId, res.state));
+    return res;
+  };
+  return opts?.tx ? run(opts.tx) : withTransaction(run);
 }
