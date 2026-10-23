@@ -339,6 +339,47 @@ describe("settleOrder: declines, waiting and the 3-hour rule", () => {
   });
 });
 
+describe("settleOrder: crashes after claiming a new attempt", () => {
+  const crashAfterClaim = (orderId: string, kind: string) =>
+    query(
+      "update payments set attempts = attempts + 1, reference = order_id::text || '-' || kind || '-' || (attempts + 1), updated_at = now() where order_id = $1 and kind = $2",
+      [orderId, kind],
+    );
+
+  it("payout: dies after sending attempt 2 following a definite decline; the next pass verifies -2 and does not send again", async () => {
+    const { orderId } = await toReleasing();
+    failTransfers(1);
+    const send = vi.spyOn(getProvider(), "transfer");
+    await settleOrder(orderId); // attempt 1: definite decline, retry_due
+    await backdate(orderId);
+    await crashAfterClaim(orderId, "payout");
+    // The transfer went out and succeeded at the provider, but record() never ran.
+    await getProvider().transfer({ reference: `${orderId}-payout-2`, amount: 4000, phone: "+256771000001", narration: "x" });
+    expect(send).toHaveBeenCalledTimes(2);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect((await rows(orderId, "payout"))[0]).toMatchObject({ status: "successful", attempts: 2, reference: `${orderId}-payout-2` });
+    expect(await state(orderId)).toBe("completed");
+  });
+
+  it("refund: dies after sending attempt 2 following a failed refund; the row goes stuck and is never re-sent", async () => {
+    const { orderId } = await toRefunding();
+    setNextRefund("failed");
+    const send = vi.spyOn(getProvider(), "refund");
+    await settleOrder(orderId); // attempt 1 failed, retry_due
+    await backdate(orderId);
+    await crashAfterClaim(orderId, "refund");
+    await getProvider().refund({ reference: `${orderId}-refund-2`, chargeProviderRef: "flw-777", amount: 4120 });
+    expect(send).toHaveBeenCalledTimes(2);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(2);
+    const r = (await rows(orderId, "refund"))[0];
+    expect(r.status).toBe("stuck");
+    expect(r.raw.reason).toMatch(/unknown/);
+    expect(await state(orderId)).toBe("refunding");
+  });
+});
+
 describe("settleOrder: refunds", () => {
   it("a pending refund is re-checked by id (never re-sent) and completes when it succeeds", async () => {
     const { orderId } = await toRefunding();

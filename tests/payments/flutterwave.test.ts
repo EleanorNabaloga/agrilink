@@ -100,6 +100,28 @@ describe("Flutterwave adapter requests", () => {
     });
   });
 
+  it("transfer is declined only for an HTTP 4xx with an error body; everything else is ambiguous", async () => {
+    const t = { reference: "5-payout-1", amount: 1, phone: "+256771000001", narration: "n" };
+    fetchMock.mockResolvedValueOnce(new Response("<html>not json</html>", { status: 200 }));
+    const unreadable = await flw.transfer(t);
+    expect(unreadable.status).toBe("failed");
+    expect(unreadable.declined).toBeUndefined();
+    reply({ status: "error", message: "Invalid account" }, 422);
+    expect((await flw.transfer(t)).declined).toBe(true);
+    reply({ status: "success", data: { id: 1, status: "FAILED" } });
+    expect((await flw.transfer(t)).declined).toBeUndefined();
+    reply({}, 503);
+    await expect(flw.transfer(t)).rejects.toThrow();
+  });
+
+  it("verifyTransfer never maps an HTTP error to not_found", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    reply({ status: "error", message: "Unauthorized" }, 401);
+    expect(await flw.verifyTransfer("5-payout-1")).toEqual({ status: "pending" });
+    reply({}, 429);
+    expect(await flw.verifyTransfer("5-payout-1")).toEqual({ status: "pending" });
+  });
+
   it("refund maps the status and returns the refund id; verifyRefund reads /refunds/{id}", async () => {
     reply({ status: "success", data: { id: 99, status: "completed" } });
     expect(await flw.refund({ reference: "5-refund-1", chargeProviderRef: "77", amount: 1 })).toEqual({ status: "successful", providerRef: "99" });

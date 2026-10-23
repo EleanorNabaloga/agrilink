@@ -88,7 +88,7 @@ export const flutterwaveProvider: PaymentProvider = {
   },
 
   async transfer(p) {
-    const { json } = await call("POST", "/transfers", {
+    const { http, json } = await call("POST", "/transfers", {
       account_bank: "MPS",
       account_number: digits(p.phone),
       amount: p.amount,
@@ -97,19 +97,28 @@ export const flutterwaveProvider: PaymentProvider = {
       narration: p.narration,
       beneficiary_name: p.beneficiaryName || "AgriLink farmer",
     });
-    if (json.status !== "success") return { status: "failed", declined: true, error: String(json.message ?? "transfer failed") };
+    if (json.status !== "success") {
+      // Definite only for an HTTP 4xx with a parsed error body. An unreadable 2xx or anything else is ambiguous.
+      const declined = http >= 400 && http < 500 && json.status === "error";
+      return { status: "failed", ...(declined ? { declined: true } : {}), error: String(json.message ?? "transfer failed") };
+    }
     const s = String(json.data?.status ?? "").toUpperCase();
     const providerRef = refOf(json.data);
-    if (s === "FAILED") return { status: "failed", declined: true, providerRef, error: String(json.data?.complete_message ?? "transfer failed") };
+    if (s === "FAILED") return { status: "failed", providerRef, error: String(json.data?.complete_message ?? "transfer failed") };
     if (s === "SUCCESSFUL") return { status: "successful", providerRef };
     return { status: "pending", providerRef };
   },
 
   async verifyTransfer(reference) {
-    const { json } = await call("GET", `/transfers?reference=${encodeURIComponent(reference)}`);
-    const t = Array.isArray(json.data) ? (json.data[0] as Json | undefined) : undefined;
-    const s = String(t?.status ?? "").toUpperCase();
+    const { http, json } = await call("GET", `/transfers?reference=${encodeURIComponent(reference)}`);
+    // An HTTP error (bad key, rate limit) says nothing about the transfer: never "not_found".
+    if (http < 200 || http >= 300 || json.status !== "success" || !Array.isArray(json.data)) {
+      console.error(`Flutterwave verifyTransfer ${reference} returned HTTP ${http}: cannot tell, treating as pending`);
+      return { status: "pending" };
+    }
+    const t = json.data[0] as Json | undefined;
     if (!t) return { status: "not_found" };
+    const s = String(t.status ?? "").toUpperCase();
     return { status: s === "SUCCESSFUL" ? "successful" : s === "FAILED" ? "failed" : "pending" };
   },
 

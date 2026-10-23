@@ -131,7 +131,11 @@ async function processRow(id: string): Promise<void> {
 
   if (row.reattempt) {
     // A re-attempt: first find out what happened to the previous one.
-    const last = lastEntry(row);
+    // Only an outcome recorded for the CURRENT reference counts. After a new attempt was claimed, the
+    // newest history entry belongs to the previous attempt and says nothing about this one (the process
+    // may have died after sending it).
+    const l = lastEntry(row);
+    const last = l && l.attempt === row.attempts ? l : undefined;
     let verifiedFailed = false;
     if (row.kind === "payout") {
       if (!last?.definite) {
@@ -161,6 +165,7 @@ async function processRow(id: string): Promise<void> {
       if (v === "pending") return wait(row, "refund pending at provider");
       verifiedFailed = true;
     } else if (last?.status !== "failed") {
+      // Refunds have no idempotency key: if we cannot be sure the last send failed, never send again.
       return stuck(row, "previous refund state unknown");
     }
     // The previous attempt is known to be dead.
