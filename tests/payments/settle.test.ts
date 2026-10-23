@@ -4,7 +4,7 @@ import { query } from "@/lib/db";
 import { applyEvent, createOrder } from "@/lib/orders/apply";
 import { createListing } from "@/lib/listings";
 import { getProvider } from "@/lib/payments";
-import { completeTransfer, failTransfers, pendingTransfers, resetFake } from "@/lib/payments/fake";
+import { completeRefund, completeTransfer, failTransfers, pendingTransfers, resetFake, setNextRefund } from "@/lib/payments/fake";
 import { settleDue, settleOrder } from "@/lib/payments/settle";
 
 beforeEach(async () => {
@@ -28,9 +28,10 @@ async function makeUser(role: string, phone: string, name: string | null = "T") 
 }
 
 /** subtotal 4000, commission 120, total 4120. */
-async function newOrder() {
-  const farmer = await makeUser("farmer", "+256771000001", "Farmer Fay");
-  const buyer = await makeUser("buyer", "+256771000002");
+async function newOrder(n = 0) {
+  const pre = `+256771${String(n).padStart(2, "0")}`;
+  const farmer = await makeUser("farmer", `${pre}0001`, "Farmer Fay");
+  const buyer = await makeUser("buyer", `${pre}0002`);
   const p = (await query<{ id: string; unit: string }>("select id::text as id, units[1] as unit from products order by id limit 1")).rows[0];
   const listing = await createListing(farmer, { productId: p.id, quantity: 10, unit: p.unit, pricePerUnit: 1000, district: "Mbale" }, farmer);
   const r = await createOrder(buyer, listing, 4);
@@ -43,15 +44,15 @@ async function newOrder() {
   );
   return { farmer, buyer, orderId };
 }
-async function toDelivered() {
-  const o = await newOrder();
+async function toDelivered(n = 0) {
+  const o = await newOrder(n);
   await applyEvent(o.orderId, { type: "charge_confirmed" }, SYSTEM);
   await applyEvent(o.orderId, { type: "farmer_sent" }, { kind: "farmer", userId: o.farmer });
   await applyEvent(o.orderId, { type: "farmer_delivered" }, { kind: "farmer", userId: o.farmer });
   return o;
 }
-async function toReleasing() {
-  const o = await toDelivered();
+async function toReleasing(n = 0) {
+  const o = await toDelivered(n);
   const r = await applyEvent(o.orderId, { type: "buyer_confirmed" }, { kind: "buyer", userId: o.buyer });
   if (!r.ok) throw new Error("setup releasing");
   return o;
@@ -66,6 +67,8 @@ async function toRefunding() {
 const state = async (id: string) => (await query("select state from orders where id = $1", [id])).rows[0].state as string;
 const rows = async (id: string, kind: string) =>
   (await query("select * from payments where order_id = $1 and kind = $2 order by id", [id, kind])).rows;
+const aged = (id: string, minutes: number) =>
+  query("update payments set first_claimed_at = now() - make_interval(mins => $2) where order_id = $1 and kind <> 'charge'", [id, minutes]);
 const backdate = (id: string) =>
   query("update payments set next_attempt_at = now() - interval '1 minute' where order_id = $1 and kind <> 'charge'", [id]);
 
@@ -241,7 +244,162 @@ describe("settleOrder", () => {
   });
 });
 
+describe("settleOrder: declines, waiting and the 3-hour rule", () => {
+  it("a definite decline (provider says not found) is retried without verifying, then stuck after 3 attempts", async () => {
+    const { orderId } = await toReleasing();
+    failTransfers(10);
+    const send = vi.spyOn(getProvider(), "transfer");
+    const verify = vi.spyOn(getProvider(), "verifyTransfer");
+    for (let i = 0; i < 4; i++) {
+      await settleOrder(orderId);
+      await backdate(orderId);
+    }
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(verify).not.toHaveBeenCalled();
+    const p = (await rows(orderId, "payout"))[0];
+    expect(p).toMatchObject({ status: "stuck", attempts: 3 });
+    expect(p.raw.attempts.map((a: any) => [a.attempt, a.status, a.definite])).toEqual([
+      [1, "failed", true],
+      [2, "failed", true],
+      [3, "failed", true],
+    ]);
+    expect(await state(orderId)).toBe("releasing");
+  });
+
+  it("an ambiguous throw followed by not_found waits (no resend), then goes stuck after 3 hours", async () => {
+    const { orderId } = await toReleasing();
+    const send = vi.spyOn(getProvider(), "transfer").mockRejectedValueOnce(new Error("timeout"));
+    await settleOrder(orderId);
+    expect((await rows(orderId, "payout"))[0]).toMatchObject({ status: "retry_due", attempts: 1 });
+    await backdate(orderId);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await rows(orderId, "payout"))[0].status).toBe("retry_due");
+    await aged(orderId, 181);
+    await backdate(orderId);
+    await settleOrder(orderId);
+    const p = (await rows(orderId, "payout"))[0];
+    expect(p.status).toBe("stuck");
+    expect(p.raw.reason).toMatch(/3 hours/);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await state(orderId)).toBe("releasing");
+  });
+
+  it("a payout still pending after 3 hours is stuck; a late success still wins", async () => {
+    const a = await toReleasing(0);
+    const b = await toReleasing(1);
+    pendingTransfers(2);
+    await settleOrder(a.orderId);
+    await settleOrder(b.orderId);
+    await aged(a.orderId, 200);
+    await aged(b.orderId, 200);
+    await backdate(a.orderId);
+    await backdate(b.orderId);
+    completeTransfer(`${b.orderId}-payout-1`, "successful");
+    await settleOrder(a.orderId);
+    await settleOrder(b.orderId);
+    expect((await rows(a.orderId, "payout"))[0].status).toBe("stuck");
+    expect(await state(a.orderId)).toBe("releasing");
+    expect((await rows(b.orderId, "payout"))[0].status).toBe("successful");
+    expect(await state(b.orderId)).toBe("completed");
+  });
+
+  it("verifyTransfer throwing never causes a new transfer", async () => {
+    const { orderId } = await toReleasing();
+    const send = vi.spyOn(getProvider(), "transfer").mockRejectedValueOnce(new Error("timeout"));
+    await settleOrder(orderId);
+    vi.spyOn(getProvider(), "verifyTransfer").mockRejectedValue(new Error("down"));
+    await backdate(orderId);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await rows(orderId, "payout"))[0]).toMatchObject({ status: "retry_due", attempts: 1 });
+  });
+
+  it("keeps the history of every attempt in raw", async () => {
+    const { orderId } = await toReleasing();
+    failTransfers(2);
+    for (let i = 0; i < 3; i++) {
+      await settleOrder(orderId);
+      await backdate(orderId);
+    }
+    const p = (await rows(orderId, "payout"))[0];
+    expect(p.status).toBe("successful");
+    expect(p.raw.attempts.map((a: any) => a.status)).toEqual(["failed", "failed", "successful"]);
+  });
+
+  it("a result can never overwrite a row that was closed meanwhile", async () => {
+    const { orderId } = await toReleasing();
+    vi.spyOn(getProvider(), "transfer").mockImplementation(async () => {
+      await query("update payments set status = 'stuck' where order_id = $1 and kind = 'payout'", [orderId]);
+      return { status: "successful", providerRef: "x" };
+    });
+    await settleOrder(orderId);
+    expect((await rows(orderId, "payout"))[0].status).toBe("stuck");
+    expect(await state(orderId)).toBe("releasing");
+  });
+});
+
+describe("settleOrder: refunds", () => {
+  it("a pending refund is re-checked by id (never re-sent) and completes when it succeeds", async () => {
+    const { orderId } = await toRefunding();
+    setNextRefund("pending");
+    const send = vi.spyOn(getProvider(), "refund");
+    await settleOrder(orderId);
+    const r1 = (await rows(orderId, "refund"))[0];
+    expect(r1.status).toBe("pending");
+    expect(r1.provider_ref).toMatch(/^fake-r-/);
+    await backdate(orderId);
+    await settleOrder(orderId); // still pending
+    expect(send).toHaveBeenCalledTimes(1);
+    completeRefund(r1.provider_ref, "successful");
+    await backdate(orderId);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await rows(orderId, "refund"))[0].status).toBe("successful");
+    expect(await state(orderId)).toBe("refunded");
+  });
+
+  it("a pending refund that turns out failed is re-sent once under a new reference", async () => {
+    const { orderId } = await toRefunding();
+    setNextRefund("pending");
+    const send = vi.spyOn(getProvider(), "refund");
+    await settleOrder(orderId);
+    completeRefund((await rows(orderId, "refund"))[0].provider_ref, "failed");
+    await backdate(orderId);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0].reference).toBe(`${orderId}-refund-2`);
+    expect(await state(orderId)).toBe("refunded");
+  });
+
+  it("a thrown refund is stuck at once with the reason, and never re-sent", async () => {
+    const { orderId } = await toRefunding();
+    setNextRefund("throw");
+    const send = vi.spyOn(getProvider(), "refund");
+    await settleOrder(orderId);
+    const r = (await rows(orderId, "refund"))[0];
+    expect(r.status).toBe("stuck");
+    expect(r.raw.reason).toMatch(/threw/);
+    await backdate(orderId);
+    await settleOrder(orderId);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await state(orderId)).toBe("refunding");
+  });
+});
+
 describe("settleDue", () => {
+  it("continues past an order whose settlement throws", async () => {
+    const a = await toReleasing(0);
+    const b = await toReleasing(1);
+    await query("create function boom() returns trigger language plpgsql as 'begin raise exception ''boom''; end'");
+    await query(
+      `create trigger boom_a before update on orders for each row when (new.id = ${a.orderId} and new.state = 'completed') execute function boom()`,
+    );
+    await expect(settleDue()).resolves.toBe(2);
+    expect(await state(a.orderId)).toBe("releasing");
+    expect(await state(b.orderId)).toBe("completed");
+  });
+
   it("settles every order with eligible rows and returns how many", async () => {
     const a = await toReleasing();
     expect(await settleDue()).toBe(1);

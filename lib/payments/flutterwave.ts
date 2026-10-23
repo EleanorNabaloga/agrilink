@@ -17,7 +17,8 @@
  *   transfer POST /v3/transfers { account_bank: "MPS", account_number, amount, currency: "UGX",
  *            reference, narration, beneficiary_name } -> data.status NEW|PENDING|SUCCESSFUL|FAILED
  *   status   GET  /v3/transfers?reference=<ref> -> data: [ { status } ]
- *   refund   POST /v3/transactions/{id}/refund { amount }
+ *   refund   POST /v3/transactions/{id}/refund { amount } -> data { id, status } (completed|successful|failed|else pending)
+ *   refstat  GET  /v3/refunds/{id} -> data { status }   (shape NOT verified against the live docs)
  *   webhook  header `verif-hash` equals the FLW_WEBHOOK_HASH we configured (constant-time compare).
  *
  * Re-check these against the live docs before going live. Never log the secret key or full bodies.
@@ -51,6 +52,11 @@ async function call(method: "GET" | "POST", path: string, body?: unknown): Promi
 const digits = (phone: string) => phone.replace(/\D/g, "");
 const refOf = (d: Json | undefined) =>
   d?.id !== undefined && d?.id !== null ? String(d.id) : d?.flw_ref ? String(d.flw_ref) : undefined;
+
+const refundStatus = (s: unknown): "successful" | "failed" | "pending" => {
+  const v = String(s ?? "").toLowerCase();
+  return v === "completed" || v === "successful" ? "successful" : v === "failed" ? "failed" : "pending";
+};
 
 export const flutterwaveProvider: PaymentProvider = {
   async startCharge(p) {
@@ -91,10 +97,10 @@ export const flutterwaveProvider: PaymentProvider = {
       narration: p.narration,
       beneficiary_name: p.beneficiaryName || "AgriLink farmer",
     });
-    if (json.status !== "success") return { status: "failed", error: String(json.message ?? "transfer failed") };
+    if (json.status !== "success") return { status: "failed", declined: true, error: String(json.message ?? "transfer failed") };
     const s = String(json.data?.status ?? "").toUpperCase();
     const providerRef = refOf(json.data);
-    if (s === "FAILED") return { status: "failed", providerRef, error: String(json.data?.complete_message ?? "transfer failed") };
+    if (s === "FAILED") return { status: "failed", declined: true, providerRef, error: String(json.data?.complete_message ?? "transfer failed") };
     if (s === "SUCCESSFUL") return { status: "successful", providerRef };
     return { status: "pending", providerRef };
   },
@@ -103,13 +109,19 @@ export const flutterwaveProvider: PaymentProvider = {
     const { json } = await call("GET", `/transfers?reference=${encodeURIComponent(reference)}`);
     const t = Array.isArray(json.data) ? (json.data[0] as Json | undefined) : undefined;
     const s = String(t?.status ?? "").toUpperCase();
+    if (!t) return { status: "not_found" };
     return { status: s === "SUCCESSFUL" ? "successful" : s === "FAILED" ? "failed" : "pending" };
   },
 
   async refund(p) {
     const { json } = await call("POST", `/transactions/${encodeURIComponent(p.chargeProviderRef)}/refund`, { amount: p.amount });
     if (json.status !== "success") return { status: "failed", error: String(json.message ?? "refund failed") };
-    return { status: "pending" };
+    return { status: refundStatus(json.data?.status), providerRef: refOf(json.data) };
+  },
+
+  async verifyRefund(providerRef) {
+    const { json } = await call("GET", `/refunds/${encodeURIComponent(providerRef)}`);
+    return { status: json.status === "success" ? refundStatus(json.data?.status) : "pending" };
   },
 
   verifyWebhook: checkWebhookHash,

@@ -87,6 +87,27 @@ describe("Flutterwave adapter requests", () => {
     expect(body).toEqual({ amount: 4120 });
   });
 
+  it("verifyTransfer says not_found when the provider has no such transfer", async () => {
+    reply({ status: "success", data: [] });
+    expect(await flw.verifyTransfer("5-payout-9")).toEqual({ status: "not_found" });
+  });
+
+  it("transfer marks a provider rejection as a definite decline", async () => {
+    reply({ status: "error", message: "Invalid account" }, 400);
+    expect(await flw.transfer({ reference: "5-payout-1", amount: 1, phone: "+256771000001", narration: "n" })).toMatchObject({
+      status: "failed",
+      declined: true,
+    });
+  });
+
+  it("refund maps the status and returns the refund id; verifyRefund reads /refunds/{id}", async () => {
+    reply({ status: "success", data: { id: 99, status: "completed" } });
+    expect(await flw.refund({ reference: "5-refund-1", chargeProviderRef: "77", amount: 1 })).toEqual({ status: "successful", providerRef: "99" });
+    reply({ status: "success", data: { id: 99, status: "failed" } });
+    expect(await flw.verifyRefund("99")).toEqual({ status: "failed" });
+    expect(lastCall().url).toBe("https://api.flutterwave.com/v3/refunds/99");
+  });
+
   it("verifyWebhook compares verif-hash with FLW_WEBHOOK_HASH", () => {
     expect(flw.verifyWebhook(new Headers({ "verif-hash": "hash-123" }))).toBe(true);
     expect(flw.verifyWebhook(new Headers({ "verif-hash": "hash-124" }))).toBe(false);

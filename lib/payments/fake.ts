@@ -5,7 +5,9 @@ type Charge = { amount: number; currency: string; status: "successful" | "pendin
 type FakeState = {
   nextCharge: "pending" | "failed" | "throw";
   charges: Map<string, Charge>;
-  transfers: Map<string, "successful" | "pending" | "failed">;
+  transfers: Map<string, "successful" | "pending" | "failed" | "not_found">;
+  refunds: Map<string, "successful" | "pending" | "failed">;
+  nextRefund: "successful" | "pending" | "failed" | "throw";
   failTransfers: number;
   pendingTransfers: number;
   seq: number;
@@ -18,6 +20,8 @@ function st(): FakeState {
     nextCharge: "pending",
     charges: new Map(),
     transfers: new Map(),
+    refunds: new Map(),
+    nextRefund: "successful",
     failTransfers: 0,
     pendingTransfers: 0,
     seq: 0,
@@ -47,8 +51,16 @@ export function pendingTransfers(n: number): void {
   st().pendingTransfers = n;
 }
 /** Decide what verifyTransfer returns for `reference`. */
-export function completeTransfer(reference: string, status: "successful" | "failed" | "pending" = "successful"): void {
+export function completeTransfer(reference: string, status: "successful" | "failed" | "pending" | "not_found" = "successful"): void {
   st().transfers.set(reference, status);
+}
+/** What the next refund call does. "pending" refunds stay pending until completeRefund. */
+export function setNextRefund(mode: "successful" | "pending" | "failed" | "throw"): void {
+  st().nextRefund = mode;
+}
+/** Decide what verifyRefund returns for a refund id. */
+export function completeRefund(providerRef: string, status: "successful" | "pending" | "failed"): void {
+  st().refunds.set(providerRef, status);
 }
 export function resetFake(): void {
   g.__agrilinkFakePay = undefined;
@@ -74,8 +86,8 @@ export const fakeProvider: PaymentProvider = {
     const s = st();
     if (s.failTransfers > 0) {
       s.failTransfers--;
-      s.transfers.set(p.reference, "failed");
-      return { status: "failed", error: "fake: transfer failed" };
+      // A definite decline: nothing exists at the provider, so verifyTransfer says not_found.
+      return { status: "failed", declined: true, error: "fake: transfer failed" };
     }
     if (s.pendingTransfers > 0) {
       s.pendingTransfers--;
@@ -86,10 +98,20 @@ export const fakeProvider: PaymentProvider = {
     return { status: "successful", providerRef: `fake-t-${++s.seq}` };
   },
   async verifyTransfer(reference) {
-    return { status: st().transfers.get(reference) ?? "pending" };
+    return { status: st().transfers.get(reference) ?? "not_found" };
   },
   async refund() {
-    return { status: "successful" };
+    const s = st();
+    const mode = s.nextRefund;
+    s.nextRefund = "successful";
+    if (mode === "throw") throw new Error("fake: network down");
+    if (mode === "failed") return { status: "failed", error: "fake: refund failed" };
+    const providerRef = `fake-r-${++s.seq}`;
+    s.refunds.set(providerRef, mode);
+    return { status: mode, providerRef };
+  },
+  async verifyRefund(providerRef) {
+    return { status: st().refunds.get(providerRef) ?? "pending" };
   },
   verifyWebhook: checkWebhookHash,
 };
